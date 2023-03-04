@@ -8,6 +8,50 @@ import paramiko
 
 import config
 
+
+
+#config
+# Server
+LISTEN_ADDR				= '127.0.0.1'
+LISTEN_PORT				= 8880
+
+# Redirect
+REDIRECT_CODE			= 307
+REDIRECT_URL			= 'https://nas.yourdomain.com:1443'
+
+# Security header converted to get parameter sent.
+REDIRECT_HEADER_TO_GET	= True
+REDIRECT_HEADERS		= ['Authorization', 'WWW-Authenticate', 'Cookie', 'Cookie2']
+
+# Auth method
+AUTH_TYPE				= 'NONE'				# 'NONE', 'BASIC', 'GET', 'POST', 'COOKIE', 'HEADER'
+
+# for BASIC
+AUTH_USER				= 'proxy-knocker'
+AUTH_PASS				= 'passwd'
+
+# for GET/POST/COOKIE/HEADER
+AUTH_FIELD				= 'proxy-knocker'
+AUTH_KEY				= 'passwd'
+
+# SSH
+SSH_ADDR				= '127.0.0.1'
+SSH_PORT				= 22
+SSH_USER				= 'root'
+SSH_PASS				= 'passwd'
+
+# iptables
+IPTABLES_PORT			= 1443
+
+IPTABLES_APPEND			= 'sudo iptables -v -A INPUT -s {IP} -p tcp --dport ' + str(IPTABLES_PORT) + ' -j ACCEPT'
+IPTABLES_DELETE			= 'sudo iptables -v -D INPUT -s {IP} -p tcp --dport ' + str(IPTABLES_PORT) + ' -j ACCEPT'
+IPTABLES_CONFIRM		= 'sudo iptables -L -n | grep ' + str(IPTABLES_PORT) + ' | grep ACCEPT | grep {IP} | wc -l'
+
+
+
+
+
+
 class ProxyKnockerServerHandler(http.server.BaseHTTPRequestHandler):
 	def do_HEAD(self):
 		self.send_response(200)
@@ -44,19 +88,19 @@ class ProxyKnockerServerHandler(http.server.BaseHTTPRequestHandler):
 		self.do_redirect()
 
 	def do_iptable_append(self, client_ip):
-		command = config.IPTABLES_APPEND.replace('{IP}', client_ip)
+		command = IPTABLES_APPEND.replace('{IP}', client_ip)
 		response = self.do_ssh_exec(command)
 
 		return response
 
 	def do_iptable_delete(self, client_ip):
-		command = config.IPTABLES_DELETE.replace('{IP}', client_ip)
+		command = IPTABLES_DELETE.replace('{IP}', client_ip)
 		response = self.do_ssh_exec(command)
 
 		return response
 
 	def do_iptable_confirm(self, client_ip):
-		command = config.IPTABLES_CONFIRM.replace('{IP}', client_ip)
+		command = IPTABLES_CONFIRM.replace('{IP}', client_ip)
 		response = self.do_ssh_exec(command)
 
 		if int(response) == 0:
@@ -87,8 +131,8 @@ class ProxyKnockerServerHandler(http.server.BaseHTTPRequestHandler):
 
 
 	def do_auth(self):
-		if config.AUTH_TYPE == 'BASIC':
-			auth_key = base64.b64encode(bytes('%s:%s' % (config.AUTH_USER, config.AUTH_PASS), 'utf-8')).decode('ascii')
+		if AUTH_TYPE == 'BASIC':
+			auth_key = base64.b64encode(bytes('%s:%s' % (AUTH_USER, AUTH_PASS), 'utf-8')).decode('ascii')
 
 			if self.headers.get('Authorization') == 'Basic ' + str(auth_key):
 				return True
@@ -111,22 +155,22 @@ class ProxyKnockerServerHandler(http.server.BaseHTTPRequestHandler):
 
 				self.wfile.write(bytes(json.dumps(response), 'utf-8'))
 
-		elif config.AUTH_TYPE == 'GET':
+		elif AUTH_TYPE == 'GET':
 			# TODO...
 			pass
-		elif config.AUTH_TYPE == 'POST':
+		elif AUTH_TYPE == 'POST':
 			# TODO...
 			pass
-		elif config.AUTH_TYPE == 'COOKIE':
+		elif AUTH_TYPE == 'COOKIE':
 			cookies = http.cookies.SimpleCookie(self.headers.get('Cookie'))
 
-			if config.AUTH_FIELD in cookies and cookies[config.AUTH_FIELD].value == config.AUTH_KEY:
+			if AUTH_FIELD in cookies and cookies[AUTH_FIELD].value == AUTH_KEY:
 				return True
 
-		elif config.AUTH_TYPE == 'HEADER':
-			if self.headers.get(config.AUTH_FIELD) == config.AUTH_KEY:
+		elif AUTH_TYPE == 'HEADER':
+			if self.headers.get(AUTH_FIELD) == AUTH_KEY:
 				return True
-		elif config.AUTH_TYPE == 'NONE':
+		elif AUTH_TYPE == 'NONE':
 			return True
 		else:
 			pass
@@ -144,10 +188,10 @@ class ProxyKnockerServerHandler(http.server.BaseHTTPRequestHandler):
 
 		path = self.path
 
-		if config.REDIRECT_HEADER_TO_GET:
+		if REDIRECT_HEADER_TO_GET:
 			append_args = {}
 
-			for headerKey in config.REDIRECT_HEADERS:
+			for headerKey in REDIRECT_HEADERS:
 				if headerKey in self.headers:
 					append_args['HTTP_' + headerKey] = self.headers.get(headerKey)
 
@@ -160,8 +204,8 @@ class ProxyKnockerServerHandler(http.server.BaseHTTPRequestHandler):
 				else:
 					path = self.path + '&' + append_args
 
-		self.send_response(config.REDIRECT_CODE)
-		self.send_header('Location', config.REDIRECT_URL + path)
+		self.send_response(REDIRECT_CODE)
+		self.send_header('Location', REDIRECT_URL + path)
 		self.end_headers()
 
 
@@ -182,10 +226,10 @@ class ProxyKnockerHTTPServer(http.server.HTTPServer):
 			self.ssh_client = paramiko.SSHClient()
 			self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-		print('Connect SSH %s@%s:%s' % (config.SSH_USER, config.SSH_ADDR, config.SSH_PORT))
+		print('Connect SSH %s@%s:%s' % (SSH_USER, SSH_ADDR, SSH_PORT))
 
 		try:
-			self.ssh_client.connect(config.SSH_ADDR, port = config.SSH_PORT, username = config.SSH_USER, password = config.SSH_PASS, timeout = 10)
+			self.ssh_client.connect(SSH_ADDR, port = SSH_PORT, username = SSH_USER, password = SSH_PASS, timeout = 10)
 
 			print('Connect SSH Success.')
 
@@ -196,12 +240,12 @@ class ProxyKnockerHTTPServer(http.server.HTTPServer):
 			return False
 
 def ProxyKnocker():
-	httpd = ProxyKnockerHTTPServer((config.LISTEN_ADDR, config.LISTEN_PORT))
+	httpd = ProxyKnockerHTTPServer((LISTEN_ADDR, LISTEN_PORT))
 
 	if httpd.connect_ssh():
-		print('Proxy-Knocker Listening: %s:%s' % (config.LISTEN_ADDR, config.LISTEN_PORT))
-		print('Proxy-Knocker Redirect URL: %s' % config.REDIRECT_URL)
-		print('Proxy-Knocker Authentication method: %s' % config.AUTH_TYPE)
+		print('Proxy-Knocker Listening: %s:%s' % (LISTEN_ADDR, LISTEN_PORT))
+		print('Proxy-Knocker Redirect URL: %s' % REDIRECT_URL)
+		print('Proxy-Knocker Authentication method: %s' % AUTH_TYPE)
 
 		httpd.serve_forever()
 
